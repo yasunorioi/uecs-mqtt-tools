@@ -155,7 +155,6 @@ _INDEX_HTML = """<!doctype html>
 <meta charset="utf-8">
 <title>uecs webui — {broker}/{prefix}</title>
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<script src="https://unpkg.com/htmx.org@2.0.4"></script>
 <style>
  body{{font-family:system-ui,sans-serif;margin:1rem;color:#222;max-width:1300px}}
  h1{{font-size:1.2rem;margin:0 0 .4rem}}
@@ -174,6 +173,7 @@ _INDEX_HTML = """<!doctype html>
  code{{font-family:ui-monospace,monospace;font-size:.85rem}}
  .collisions{{background:#fff2f0;border-radius:.4rem;padding:.5rem .8rem}}
  .empty{{color:#999}}
+ .err{{color:#c33;font-size:.85rem}}
 </style></head>
 <body>
 <h1>uecs-mqtt webui</h1>
@@ -182,20 +182,43 @@ _INDEX_HTML = """<!doctype html>
   · prefix: <code>{prefix}</code>
   · subscribed: <span id="subscribed">{subscribed}</span>
   · <span id="metrics">messages: —, topics: —</span>
+  · <span id="fetch-status"></span>
 </div>
 
-<div id="content"
-     hx-get="/partial" hx-trigger="load, every 2s" hx-swap="innerHTML">
-  <p>loading…</p>
-</div>
+<div id="content"><p>loading…</p></div>
+
+<script>
+// vanilla fetch + setInterval — HTMX/CDN 依存を外してオフライン LAN でも動く。
+// 相対 URL なので nginx の /uecs/ mount 下でも / 直下でもそのまま動く。
+// innerHTML 経由の <script> はブラウザが exec しないので、metrics は
+// /health を並行に叩いて上書きする。
+async function refresh() {{
+  try {{
+    const [partial, health] = await Promise.all([
+      fetch("partial", {{cache: "no-store"}}).then(r => {{
+        if (!r.ok) throw new Error("partial " + r.status);
+        return r.text();
+      }}),
+      fetch("health", {{cache: "no-store"}}).then(r => r.json()),
+    ]);
+    document.getElementById("content").innerHTML = partial;
+    const err = health.last_error ? ' · err: ' + health.last_error : '';
+    document.getElementById("metrics").textContent =
+      "messages: " + health.total_messages + ", topics: " + health.topic_count + err;
+    document.getElementById("fetch-status").textContent = "";
+  }} catch (e) {{
+    document.getElementById("fetch-status").innerHTML =
+      '<span class="err">fetch err: ' + e.message + '</span>';
+  }}
+}}
+refresh();
+setInterval(refresh, 2000);
+</script>
 
 </body></html>
 """
 
 _PARTIAL_TEMPLATE = """
-<script>
-document.getElementById("metrics").textContent = "messages: {total}, topics: {topic_count}";
-</script>
 {scopes_html}
 
 <h2 style="font-size:1rem;margin:1.2rem 0 .4rem">recent collisions</h2>
@@ -277,8 +300,6 @@ def render_partial(state: State, prefix: str) -> str:
         collisions_html = '<p class="empty">(no collisions)</p>'
 
     return _PARTIAL_TEMPLATE.format(
-        total=total,
-        topic_count=len(entries),
         scopes_html=scopes_html,
         collisions_html=collisions_html,
     )

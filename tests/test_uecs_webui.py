@@ -188,5 +188,9 @@ def test_render_index_shows_broker_info():
     out = ui.render_index("100.102.95.37", 1883, "agriha", None)
     assert "100.102.95.37" in out
     assert "agriha" in out
-    assert "not yet" in out  # subscribed 時刻 未設定
-    assert "htmx.org" in out  # HTMX 読み込み
+    assert "not yet" in out              # subscribed 時刻 未設定
+    assert 'fetch("partial"' in out      # vanilla fetch (HTMX 依存除去)
+    assert 'fetch("health"' in out       # metrics 用の health poll
+    # 外部 CDN dependency は排除されている
+    assert "unpkg.com" not in out
+    assert "cdn." not in out
