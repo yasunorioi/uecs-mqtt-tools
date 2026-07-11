@@ -1,0 +1,61 @@
+# UECS-CCM → MQTT bridge の設定例
+#
+# UECS-CCM の (room, region) は「同一 room 内で region で場所を区別する」構造。
+# 本ブリッジは (room, region) → (scope, category) の対応表 (scope_map) を
+# 使って agriha 命名規約 (§0.1) の `<prefix>/<scope>/<category>/<type>` に
+# 変換する。
+#
+# scope: house_id (int) or "farm" (string)
+# category: "sensor" / "weather" / etc.
+#
+# 現地癖 (同じ発信元でも type によって region が異なる) は sender_override で
+# IP 別に上書き。scope_map より優先される。
+
+# ── CCM UDP マルチキャストの受信元 ──
+ccm:
+  multicast: 224.0.0.1
+  port: 16520
+
+# ── 転送先 MQTT broker ──
+mqtt:
+  broker: localhost
+  port: 1883
+  topic_prefix: agriha        # トピック先頭。他 project では変更可
+
+# ── (room, region) 対応表 ──
+# 例は 1 farm + 2 houses の構成。実現場に合わせて書き換える。
+scope_map:
+  - room: 1
+    region: 41
+    scope: farm
+    category: weather
+    note: "屋外気象ステーション → farm 共有"
+
+  - room: 1
+    region: 11
+    scope: 1
+    category: sensor
+    note: "本棟 → house 1"
+
+  - room: 1
+    region: 12
+    scope: 3
+    category: sensor
+    note: "新棟 → house 3"
+
+  # アクチュエータ/制御 (UECS の region 61/62 台) はブリッジしないので
+  # 対応表に載せない。載せないエントリは publish されない。
+
+# ── 発信元 IP ごとの上書き (任意) ──
+# scope_map より優先。「region 付与が type によって変わる」ような
+# 現地癖を吸収する。
+sender_override:
+  - ip: 192.168.1.80
+    room: 1
+    region: 11
+    scope: 3
+    category: sensor
+    note: |
+      新棟 (.80) は InAir* を region12、Soil*/Pulse/IntgRadiation を region11
+      で送るため、region11 のときは house 3 に振り直す (region12 分は
+      scope_map の (1,11)→house1 と衝突しない)

@@ -1,0 +1,15 @@
+[Unit]
+Description=UECS-CCM to MQTT bridge (one-way)
+After=network-online.target mosquitto.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+# 実行ユーザは配置環境に合わせて変更 (mosquitto_pub の PATH を持つ user)
+User=pi
+ExecStart=/usr/bin/python3 /opt/uecs-mqtt-tools/bridges/ccm_mqtt_bridge.py --config /etc/uecs-mqtt-bridge/config.yaml
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
