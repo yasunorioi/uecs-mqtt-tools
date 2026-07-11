@@ -65,6 +65,17 @@ sudo journalctl -u ccm-mqtt-bridge -f
 - **sensor simulator** — 実 CCM 機器なしで合成 UDP パケットを流して bridge を叩く
 - **WebUI** — 稼働中の bridge の traffic を眺める + scope_map の live 検証
 
+## 参考仕様
+
+- [UARDECS (Arduino UECS)](https://github.com/H-Kurosaki/UARDECS) — CCM (UECS)
+  の DATA XML パケットを送受する Arduino ライブラリ。実装 reference
+- [Arsprout UECS-MQTT 変換ゲートウェイ仕様 v1.0](https://www.arsprout.co.jp/wp-content/uploads/2026/03/UECS-MQTT-GW-SPEC_1.0.pdf)
+  (2026-03-23) — ArsProut 公式の MQTT-GW 仕様。本リポジトリの `bridges/` は
+  この spec とは **異なる topic 体系** (`agriha/{scope}/{cat}/{type}` の 4-seg 圧縮版) を
+  採用しており spec 完全準拠ではない。spec は `data/{app}/{env}/{user}/{room}/{region}/{order}/{type}`
+  の 8-seg 構造 + request/response 型 topic + 変化量閾値 publish 抑制などを規定。
+  将来 spec 互換 mode を追加する可能性あり (`docs/spec-compat.md` は現在未作成)
+
 ## 出自
 
 `bridges/ccm_mqtt_bridge.py` は private repo `arsprout-analysis` の
