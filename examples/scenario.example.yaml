@@ -1,0 +1,55 @@
+# ccm_simulator 用シナリオ例
+#
+# 現地のような複数 CCM ノード配置を再現。P4 湿度スパイクや P5 CO2 低下など
+# rule engine の発火条件を狙って組める。
+#
+# 使い方:
+#   python3 tools/ccm_simulator.py --config examples/scenario.example.yaml \
+#       --target 127.0.0.1 --duration 60
+
+# ── 送出先。loopback で bridge/capture を叩くなら --target 127.0.0.1 上書き ──
+target:
+  multicast: 224.0.0.1
+  port: 16520
+
+# ── nodes: 発信元機器 1 つずつ ──
+nodes:
+  # 本棟の env センサ (.70 相当)
+  - name: mock_env_h1
+    interval_sec: 10
+    ccms:
+      - {type: InAirTemp, room: 1, region: 11, order: 1,
+         value: {kind: sine, center: 25, amplitude: 3, period_sec: 3600}}
+      - {type: InAirHumid, room: 1, region: 11, order: 1,
+         value: {kind: jitter, base: 82, sigma: 2, seed: 42}}
+      - {type: InAirCO2, room: 1, region: 11, order: 1,
+         value: {kind: constant, value: 420}}
+
+  # 新棟の env センサ (.80 相当)
+  - name: mock_env_h3
+    interval_sec: 10
+    ccms:
+      - {type: InAirTemp, room: 1, region: 12, order: 1,
+         value: {kind: sine, center: 26, amplitude: 3, period_sec: 3600}}
+      - {type: InAirHumid, room: 1, region: 12, order: 1,
+         value: {kind: constant, value: 78}}
+      - {type: InAirCO2, room: 1, region: 12, order: 1,
+         value: {kind: constant, value: 410}}
+
+  # 気象測器 (.71 相当) — 雨イベント: 30s で降雨開始
+  - name: mock_weather
+    interval_sec: 30
+    ccms:
+      - {type: WAirTemp, room: 1, region: 41, order: 1,
+         value: {kind: constant, value: 22}}
+      - {type: WWindSpeed, room: 1, region: 41, order: 1,
+         value: {kind: constant, value: 1.5}}
+      - {type: WRainfallAmt, room: 1, region: 41, order: 1,
+         value: {kind: ramp, start: 0, end: 5, duration_sec: 60}}
+
+  # 湿度スパイクノード — P4 発火を狙う: 20s で 90% にランプアップ
+  - name: mock_humidity_spike
+    interval_sec: 5
+    ccms:
+      - {type: InAirHumid, room: 1, region: 11, order: 2,   # order=2 で衝突回避
+         value: {kind: ramp, start: 75, end: 92, duration_sec: 20}}
