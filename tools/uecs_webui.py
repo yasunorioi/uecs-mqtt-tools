@@ -72,11 +72,26 @@ class State:
         except json.JSONDecodeError:
             data, text = {}, raw.decode("utf-8", "replace")
 
+        # bridge payload は {value, unit, ts} 前提だが、実運用では
+        # 数値リテラルや配列を素で流す publisher (agriha-controller/logic/*
+        # 等) が居るので dict 以外は payload そのものを value 扱いにする
+        if isinstance(data, dict):
+            value = data.get("value")
+            unit = str(data.get("unit", ""))
+            try:
+                ts = float(data.get("ts") or 0)
+            except (TypeError, ValueError):
+                ts = 0.0
+        else:
+            value = data
+            unit = ""
+            ts = 0.0
+
         entry = TopicEntry(
             topic=topic,
-            value=data.get("value"),
-            unit=str(data.get("unit", "")),
-            ts=float(data.get("ts") or 0),
+            value=value,
+            unit=unit,
+            ts=ts,
             received_at=now,
             payload_raw=text,
         )

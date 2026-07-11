@@ -65,6 +65,21 @@ def test_on_message_malformed_payload_kept_as_raw():
     assert e.payload_raw == "not json at all"
 
 
+def test_on_message_non_dict_json_payload_kept_as_value():
+    """agriha-controller の logic/* は数値リテラル / dict 以外を流すこともある。
+    dict 以外のときは payload そのものを value とし、crash させない。"""
+    s = ui.State()
+    s.on_message("num", b"42")           # int
+    s.on_message("str", b'"running"')    # 文字列
+    s.on_message("arr", b"[1,2,3]")      # 配列
+    assert s.topics["num"].value == 42
+    assert s.topics["str"].value == "running"
+    assert s.topics["arr"].value == [1, 2, 3]
+    # ts は 0、unit は空、しかし crash してない
+    assert s.topics["num"].ts == 0
+    assert s.last_error is None
+
+
 # ── group_topics ────────────────────────────
 
 def _mk_entry(topic, value=1, ts=100):
