@@ -104,10 +104,10 @@ def test_build_packet_wraps_uecs() -> None:
 # handle_packet — rcA 受信 → actuator state 更新
 # ══════════════════════════════════════════════
 
-def _make_actuators() -> dict[str, Actuator]:
+def _make_actuators() -> dict[tuple[str, int], Actuator]:
     irri = Actuator(name="irrigation", cmd_type="IrrircA", state_type="Irriopr", order=1, initial=0)
     relay3 = Actuator(name="co2_gen", cmd_type="RelayrcA", state_type="Relayopr", order=3, initial=0)
-    return {a.cmd_type: a for a in (irri, relay3)}
+    return {(a.cmd_type, a.order): a for a in (irri, relay3)}
 
 
 def test_handle_packet_applies_matching_cmd() -> None:
@@ -119,7 +119,7 @@ def test_handle_packet_applies_matching_cmd() -> None:
     assert entries[0]["actuator"] == "irrigation"
     assert entries[0]["prev"] == 0
     assert entries[0]["new"] == 1.0
-    assert actuators["IrrircA"].current == 1.0
+    assert actuators[("IrrircA", 1)].current == 1.0
 
 
 def test_handle_packet_ignores_wrong_room() -> None:
@@ -127,7 +127,7 @@ def test_handle_packet_ignores_wrong_room() -> None:
     xml = '<DATA type="IrrircA" room="2" region="71" order="1">1</DATA>'
     entries = handle_packet(xml, "src", actuators, 1, 71, 0.0)
     assert entries == []
-    assert actuators["IrrircA"].current == 0  # not applied
+    assert actuators[("IrrircA", 1)].current == 0  # not applied
 
 
 def test_handle_packet_ignores_wrong_region() -> None:
@@ -138,12 +138,42 @@ def test_handle_packet_ignores_wrong_region() -> None:
 
 
 def test_handle_packet_ignores_wrong_order() -> None:
-    """order で区別する actuator (relay ch3 と ch4 が同 cmd_type) — order 違いは無視。"""
+    """order で区別する actuator (relay ch3 と ch4 が同 cmd_type) — order 違いは unmapped_cmd。"""
     actuators = _make_actuators()
     xml = '<DATA type="RelayrcA" room="1" region="71" order="4">1</DATA>'
     entries = handle_packet(xml, "src", actuators, 1, 71, 0.0)
-    assert entries == []
-    assert actuators["RelayrcA"].current == 0
+    # order=4 は registry 未登録 → unmapped_cmd として記録される (silent drop ではない)
+    assert len(entries) == 1
+    assert entries[0]["event"] == "unmapped_cmd"
+    assert actuators[("RelayrcA", 3)].current == 0
+
+
+def test_handle_packet_same_cmd_type_different_orders() -> None:
+    """現地 VenSdWinrcA order=1/2 パターン: 両方受信されるべき (registry bug 回帰防止)。"""
+    win1 = Actuator(name="south_lower", cmd_type="VenSdWinrcA", state_type="VenSdWinopr", order=1, initial=0)
+    win2 = Actuator(name="south_upper", cmd_type="VenSdWinrcA", state_type="VenSdWinopr", order=2, initial=0)
+    actuators = {(a.cmd_type, a.order): a for a in (win1, win2)}
+    xml = (
+        '<UECS>'
+        '<DATA type="VenSdWinrcA" room="1" region="71" order="1">30</DATA>'
+        '<DATA type="VenSdWinrcA" room="1" region="71" order="2">30</DATA>'
+        '</UECS>'
+    )
+    entries = handle_packet(xml, "src", actuators, 1, 71, 0.0)
+    assert len(entries) == 2
+    assert {e["actuator"] for e in entries} == {"south_lower", "south_upper"}
+    assert actuators[("VenSdWinrcA", 1)].current == 30.0
+    assert actuators[("VenSdWinrcA", 2)].current == 30.0
+
+
+def test_handle_packet_missing_order_treated_as_1() -> None:
+    """UECS 仕様: order 属性欠落は主系統 1 として扱う。"""
+    actuators = _make_actuators()
+    xml = '<DATA type="IrrircA" room="1" region="71">1</DATA>'  # order 属性なし
+    entries = handle_packet(xml, "src", actuators, 1, 71, 0.0)
+    assert len(entries) == 1
+    assert entries[0]["event"] == "cmd_applied"
+    assert actuators[("IrrircA", 1)].current == 1.0
 
 
 def test_handle_packet_ignores_opr_type() -> None:

@@ -275,12 +275,17 @@ def make_send_socket(ttl: int = 1) -> socket.socket:
 def handle_packet(
     payload: str,
     src_ip: str | None,
-    actuators: dict[str, Actuator],
+    actuators: dict[tuple[str, int], Actuator],
     room_filter: int,
     region_filter: int,
     now_ts: float,
 ) -> list[dict[str, Any]]:
-    """受信 payload を parse、該当 actuator の state 更新、log entry を返す。"""
+    """受信 payload を parse、該当 actuator の state 更新、log entry を返す。
+
+    actuators registry は (cmd_type, order) key。同一 cmd_type 内の複数 order
+    (現地の VenSdWinrcA order=1/2 など) を分離管理する。
+    order 欠落 packet は UECS 仕様に従い order=1 として扱う。
+    """
     entries: list[dict[str, Any]] = []
     for data in parse_data_elements(payload):
         # rcA (command) だけを処理、opr (自分の送信も含む) は無視
@@ -291,9 +296,13 @@ def handle_packet(
             continue
         if data.get("region") is not None and data["region"] != region_filter:
             continue
-        actuator = actuators.get(data["type"])
+        order = data.get("order")
+        if order is None:
+            order = 1  # UECS 仕様: order 欠落は主系統 1
+        key = (data["type"], order)
+        actuator = actuators.get(key)
         if actuator is None:
-            # 未定義の rcA を受信した (config で扱ってない actuator) → log だけ残す
+            # 未定義の rcA を受信した (config で扱ってない actuator or order) → log だけ残す
             entries.append({
                 "ts": datetime.now(_JST).isoformat(),
                 "event": "unmapped_cmd",
@@ -304,8 +313,6 @@ def handle_packet(
                 "order": data["order"],
                 "value": data["value"],
             })
-            continue
-        if data.get("order") is not None and data["order"] != actuator.order:
             continue
         prev = actuator.current
         actuator.apply_cmd(data["value"], src_ip, now_ts)
@@ -369,7 +376,11 @@ def run(
     Returns: {"cmds_received": int, "state_packets_sent": int, "unmapped": int}
     """
     # 名前ではなく cmd_type key で lookup (受信側は type で識別)
-    by_cmd_type: dict[str, Actuator] = {a.cmd_type: a for a in cfg.actuators}
+    # (cmd_type, order) key で actuator を registry 化。
+    # 同一 cmd_type の複数 order (現地 VenSdWinrcA order=1/2 etc) を正しく分離
+    by_cmd_type: dict[tuple[str, int], Actuator] = {
+        (a.cmd_type, a.order): a for a in cfg.actuators
+    }
     by_name: dict[str, Actuator] = {a.name: a for a in cfg.actuators}
 
     stats = {"cmds_received": 0, "state_packets_sent": 0, "unmapped": 0}
