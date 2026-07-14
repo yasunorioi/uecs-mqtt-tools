@@ -4,52 +4,63 @@
 #
 # 実 deploy: agri-relay-simulator.service systemd unit で常駐、DSL executor が
 # rcA type CCM を送ると simulator が jsonl 記録 + opr type で state 返す。
+#
+# 現地観測 (2026-07-14, 60s, Pi4 ccm_capture) に基づく actuator セット:
+#   .81 → (1, 71, VenSdWinrcA, order=1/2): 各 31 件/60s  ← 現地 primary の h2 窓制御
+#   .81 → (1, 71, CirHoriFanrcA, order=1): まれ (60s に 1 件程度)
+#   IrrircA / RelayrcA は現地では rcA として観測されず (opr のみ .71 から発信)
+#   → 将来 DSL 側で灌水/CO2 の自動制御を導入するときに rcA として送出することに
+#     なるので、simulator 側は先に受け口を用意しておく (unmapped_cmd log で
+#     未使用時は静か)
 
 device:
   name: agri-relay-192-sim
   room: 1
-  region: 71     # 現地 h2 actuator の region と一致 (project_ccm_site_traffic.md)
+  region: 71     # h2 actuator (project_ccm_site_traffic.md 準拠、.81 → region=71)
 
 target:
   multicast: 224.0.0.1
   port: 16520
   bind_ip: 0.0.0.0
 
-# 現地 OGMS の actuator セットに合わせる (灌水/CO2/結露 + relay ch + 窓)
 actuators:
-  # 灌水電磁弁
-  - name: irrigation
-    cmd_type: IrrircA
-    state_type: Irriopr
+  # ─── 現地観測 confirmed (VenSdWinrcA / CirHoriFanrcA) ───
+
+  # 南窓 order=1 (現地 .81 から 31 件/60s で受信中の想定)
+  - name: south_window_1
+    cmd_type: VenSdWinrcA
+    state_type: VenSdWinopr
     order: 1
     initial: 0
 
-  # CO2 発生器 (UniPi ch3 相当を CCM 化した想定)
-  - name: co2_generator
-    cmd_type: RelayrcA
-    state_type: Relayopr
-    order: 3       # order=3 で ch3 区別
+  # 南窓 order=2
+  - name: south_window_2
+    cmd_type: VenSdWinrcA
+    state_type: VenSdWinopr
+    order: 2
     initial: 0
 
-  # 循環扇
+  # 循環扇 (稀に発火)
   - name: circ_fan
     cmd_type: CirHoriFanrcA
     state_type: CirHoriFanopr
     order: 1
     initial: 0
 
-  # 南窓 (下段)
-  - name: south_window_lower
-    cmd_type: VenSdWinrcA
-    state_type: VenSdWinopr
-    order: 1       # 窓の識別は order で
+  # ─── 将来 DSL 化予定 (現地未観測、受け口だけ用意) ───
+
+  # 灌水電磁弁 (現状 .71 が opr publish するのみ、rcA は未観測)
+  - name: irrigation
+    cmd_type: IrrircA
+    state_type: Irriopr
+    order: 1
     initial: 0
 
-  # 南窓 (上段)
-  - name: south_window_upper
-    cmd_type: VenSdWinrcA
-    state_type: VenSdWinopr
-    order: 2
+  # CO2 発生器 (relay ch3 想定)
+  - name: co2_generator
+    cmd_type: RelayrcA
+    state_type: Relayopr
+    order: 3
     initial: 0
 
 state_emit_interval_sec: 10.0
