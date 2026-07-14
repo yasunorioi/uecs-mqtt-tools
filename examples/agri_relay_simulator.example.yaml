@@ -63,6 +63,6 @@ actuators:
     order: 3
     initial: 0
 
-state_emit_interval_sec: 10.0
+state_emit_interval_sec: 5.0    # 現地 .71 の VenSdWinopr 発信間隔 (5s) に合わせる
 
 log_path: /var/log/agri-relay-sim.jsonl
