@@ -1,0 +1,57 @@
+# agri-relay-simulator scenario 例
+# step 6 (DSL primary 昇格) の safety-first 検証で、実 OGMS/agri-relay 触らずに
+# コマンド受信/state 送出だけ模擬する。命名は "agri-relay-192" 相当を想定。
+#
+# 実 deploy: agri-relay-simulator.service systemd unit で常駐、DSL executor が
+# rcA type CCM を送ると simulator が jsonl 記録 + opr type で state 返す。
+
+device:
+  name: agri-relay-192-sim
+  room: 1
+  region: 71     # 現地 h2 actuator の region と一致 (project_ccm_site_traffic.md)
+
+target:
+  multicast: 224.0.0.1
+  port: 16520
+  bind_ip: 0.0.0.0
+
+# 現地 OGMS の actuator セットに合わせる (灌水/CO2/結露 + relay ch + 窓)
+actuators:
+  # 灌水電磁弁
+  - name: irrigation
+    cmd_type: IrrircA
+    state_type: Irriopr
+    order: 1
+    initial: 0
+
+  # CO2 発生器 (UniPi ch3 相当を CCM 化した想定)
+  - name: co2_generator
+    cmd_type: RelayrcA
+    state_type: Relayopr
+    order: 3       # order=3 で ch3 区別
+    initial: 0
+
+  # 循環扇
+  - name: circ_fan
+    cmd_type: CirHoriFanrcA
+    state_type: CirHoriFanopr
+    order: 1
+    initial: 0
+
+  # 南窓 (下段)
+  - name: south_window_lower
+    cmd_type: VenSdWinrcA
+    state_type: VenSdWinopr
+    order: 1       # 窓の識別は order で
+    initial: 0
+
+  # 南窓 (上段)
+  - name: south_window_upper
+    cmd_type: VenSdWinrcA
+    state_type: VenSdWinopr
+    order: 2
+    initial: 0
+
+state_emit_interval_sec: 10.0
+
+log_path: /var/log/agri-relay-sim.jsonl
