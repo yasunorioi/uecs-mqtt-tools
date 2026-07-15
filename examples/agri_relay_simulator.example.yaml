@@ -9,14 +9,24 @@
 #   .81 → (1, 71, VenSdWinrcA, order=1/2): 各 31 件/60s  ← 現地 primary の h2 窓制御
 #   .81 → (1, 71, CirHoriFanrcA, order=1): まれ (60s に 1 件程度)
 #   IrrircA / RelayrcA は現地では rcA として観測されず (opr のみ .71 から発信)
-#   → 将来 DSL 側で灌水/CO2 の自動制御を導入するときに rcA として送出することに
-#     なるので、simulator 側は先に受け口を用意しておく (unmapped_cmd log で
-#     未使用時は静か)
+#
+# ccm_rp2350_relay firmware (~/ccm_rp2350_relay/ccm_rp2350_relay.ino) がサポートする
+# baseType 全 14 種 (順不同):
+#   Aperture 型 (%開度): VenSdWin, VenRfWin, ThCrtn, LsCrtn
+#   Relay 型 (0/1 or 数値): Irri, VenFan, CirHoriFan, AirHeatBurn, AirHeatHP,
+#     CO2Burn, AirCoolHP, AirHumFog, Relay
+# Matching key = (baseType, room, region, order)、priority 数値小が優先。
+# 受信側は (room=X, region=Y, order=Z) の 4-tuple 完全一致で drop 判定するので、
+# 実 relay (agri-relay-2 = region=71 / agri-relay-3 = region=72) との collision を
+# 避けたければ virtual device は region=91 以降 (未使用領域) を使う。
+#
+# 実 h2 h3 は agri-relay-2 (1, 71) / agri-relay-3 (1, 72) が稼働中。virtual test
+# には .192 相当の別 device 名 + 未使用 region (91 等) が安全。
 
 device:
   name: agri-relay-192-sim
   room: 1
-  region: 71     # h2 actuator (project_ccm_site_traffic.md 準拠、.81 → region=71)
+  region: 91     # 未使用領域 (実 h2/h3 = 71/72 と region level で衝突回避)
 
 target:
   multicast: 224.0.0.1
@@ -24,9 +34,9 @@ target:
   bind_ip: 0.0.0.0
 
 actuators:
-  # ─── 現地観測 confirmed (VenSdWinrcA / CirHoriFanrcA) ───
+  # ─── Aperture 型 (%開度、setTargetAperture 経路) ───
 
-  # 南窓 order=1 (現地 .81 から 31 件/60s で受信中の想定)
+  # 南窓 order=1 (現地 .81 → h2 で 31 件/60s 観測、window primary)
   - name: south_window_1
     cmd_type: VenSdWinrcA
     state_type: VenSdWinopr
@@ -40,24 +50,52 @@ actuators:
     order: 2
     initial: 0
 
-  # 循環扇 (稀に発火)
+  # 天窓 (VenRfWin) — 実 h2/h3 に無くても firmware サポート
+  - name: roof_window
+    cmd_type: VenRfWinrcA
+    state_type: VenRfWinopr
+    order: 1
+    initial: 0
+
+  # 保温カーテン
+  - name: thermal_curtain
+    cmd_type: ThCrtnrcA
+    state_type: ThCrtnopr
+    order: 1
+    initial: 0
+
+  # ─── Relay 型 (0/1 or 数値、claim/release 経路) ───
+
+  # 循環扇 (現地 .81 で稀に発火 観測)
   - name: circ_fan
     cmd_type: CirHoriFanrcA
     state_type: CirHoriFanopr
     order: 1
     initial: 0
 
-  # ─── 将来 DSL 化予定 (現地未観測、受け口だけ用意) ───
+  # 換気扇 (別枠、firmware サポート)
+  - name: vent_fan
+    cmd_type: VenFanrcA
+    state_type: VenFanopr
+    order: 1
+    initial: 0
 
-  # 灌水電磁弁 (現状 .71 が opr publish するのみ、rcA は未観測)
+  # 灌水電磁弁 (現状 .71 opr publish のみ、rcA は現地未観測)
   - name: irrigation
     cmd_type: IrrircA
     state_type: Irriopr
     order: 1
     initial: 0
 
-  # CO2 発生器 (relay ch3 想定)
-  - name: co2_generator
+  # CO2 燃焼式発生器 (firmware CO2Burn 対応、日中用)
+  - name: co2_burner
+    cmd_type: CO2BurnrcA
+    state_type: CO2Burnopr
+    order: 1
+    initial: 0
+
+  # 汎用 relay ch3 (残 GPIO ch を DSL で使う場合)
+  - name: relay_ch3
     cmd_type: RelayrcA
     state_type: Relayopr
     order: 3
